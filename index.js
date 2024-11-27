@@ -1,33 +1,13 @@
-let express = require('express')
-let acorn = require('acorn')
-let fs = require('fs')
-// let fs = require('node:fs/promises');
+const express = require('express')
+const acorn = require('acorn')
+const fs = require('fs')
+// const fs = require('node:fs/promises');
+const visitor = require('./visitor.js')
 
-let visitor = require('./visitor.js')
-let dir = '../wiki-client/lib'
-let mods = []
-
-const app = express()
-
-
-// P A G E S
-
-app.get('/index', async (req,res,next) => {
-  console.log(new Date().toLocaleTimeString(), 'index')
-  const reductions = counter()
-  fs.readdir(dir, async (err, files) => {
-    mods = await Promise.all(files.map(load))
-    const doit = branch => {reductions.count(branch.type)}
-    visitor.wander(mods,doit)
-    const result = `
-      <p>${reductions.size()} non-terminals
-      <br>${reductions.total()} reductions
-      <p>${reductions.tally()
-        .map(([k,v]) => `${v} ${link(k)}`)
-        .join("<br>")}`
-    res.send(result);
-    next()
-  })
+const dir = '../wiki-client/lib'
+const mods = []
+fs.readdir(dir, async (err, files) => {
+  mods.push(... await Promise.all(files.map(load)))
 })
 
 async function load(file) {
@@ -39,6 +19,27 @@ async function load(file) {
   })
 }
 
+
+// P A G E S
+
+const style = '<style> a {text-decoration: none} .hi {background-color:pink} </style>'
+const app = express()
+
+app.get('/index', async (req,res,next) => {
+  console.log(new Date().toLocaleTimeString(), 'index')
+  const reductions = counter()
+  const doit = branch => {reductions.count(branch.type)}
+  visitor.wander(mods,doit)
+  const result = `
+    <p>${reductions.size()} non-terminals
+    <br>${reductions.total()} reductions
+    <p>${reductions.tally()
+      .map(([k,v]) => `${v} ${link(k)}`)
+      .join("<br>")}`
+  res.send(style+result);
+  next()
+  })
+
 function link(key) {
   if(key.match(/^Ident/)) return `<a href="/terminal?type=${key}&field=name">${key}</a>`
   if(key.match(/^(As|B|L|U).*Ex/)) return `<a href="/terminal?type=${key}&field=operator">${key}</a>`
@@ -48,35 +49,50 @@ function link(key) {
 
 
 app.get('/terminal', (req,res) => {
+  const {type,field} = req.query
   const lits = counter()
-  const id = req.query.type
-  const field = req.query.field
-  const doit = branch => {if(branch.type==id) lits.count(branch[field])}
+  const doit = branch => {if(branch.type==type) lits.count(branch[field])}
   visitor.wander(mods,doit)
   const result = `
     <p>${lits.size()} uniques
     <br>${lits.total()} total
     <p>${lits.tally()
-      .map(([k,v]) => `${v} <a href="/usage?type=${id}&field=${field}&key=${encodeURIComponent(k)}">${escape(k)}</a>`)
+      .map(([k,v]) => `${v} <a href="/usage?type=${type}&field=${field}&key=${encodeURIComponent(k)}">${escape(k)}</a>`)
       .join("<br>")}`
-  res.send(result)
+  res.send(style+result)
 })
 
 app.get('/usage', (req,res) => {
-  const type = req.query.type
-  const field = req.query.field
-  const key = req.query.key
+  const {type,field,key} = req.query
   const list = []
   const doit = (branch,stack) => {
-    if(branch.type==type && branch[field]==key)
-      list.push(`${stack.at(-1)} ${sxpr(stack[2],3)}`
-        // `${stack.length}
-        // ${stack.at(-1)}-${branch.start}-${branch.end}
-        // (${stack.slice(0,6).map(n => n.end-n.start).join(" ")})`
-        )
+    if(branch.type==type && branch[field]==key)list.push(`
+      <a href="/nesting/?file=${stack.at(-1)}&type=${type}&start=${branch.start}&end=${branch.end}">
+      ${stack.at(-1)}</a>
+      ${sxpr(stack[2],3)}`)
   }
   visitor.wander(mods,doit)
-  res.send(`<pre>${JSON.stringify(req.query,null,2)}</pre>${list.join("<br>")}`)
+  res.send(style+`<pre>${JSON.stringify(req.query,null,2)}</pre>${list.join("<br>")}`)
+})
+
+app.get('/nesting', (req,res) => {
+  const {file,type,start,end} = req.query
+  const result = []
+  const doit = (branch,stack) => {
+    if(stack.at(-1)==file && branch.type==type && branch.start==start && branch.end==end) {
+      const file = stack.at(-1)
+      const path = stack.slice(0,-1).map((n,i) => `
+        <tr><td style="text-align:right;">
+          <a title=${file} href=/similar?pos=${`${file}-${start}-${end}`}&depth=${i}>${n.type}</a>:
+        <td>${sxpr(n,3,null,stack[i-1])}`).reverse()
+      const hit = stack[1]
+      result.push(`
+        <table>${path.join("")}</table><br><br>\n
+        <pre>${escape(JSON.stringify(hit,omit,2))}</pre>`)
+    }
+  }
+  visitor.wander(mods,doit)
+  res.send(style+`<pre>${JSON.stringify(req.query,null,2)}</pre>${result.join("<br>")}`)
 })
 
 
@@ -119,14 +135,14 @@ function escape(text) {
 
 function sxpr(obj,deep,key,child) {
   const hilite = obj===child ? 'class="hi"' : ''
-  const link = word => obj.type == 'Identifier' ? `<a href=/context?id=${word}>${word}</a>` : word
+  const link = word => obj.type == 'Identifier' ? `<a href=/usage?type=Identifier&field=name&key=${word}>${word}</a>` : word
   if (obj) {
     if(deep) {
       const fields = Object.entries(obj)
         .filter(([k,v]) => !['start','end','raw','computed','optional','kind'].includes(k))
         .map(([k,v]) =>
           k=='type' ? abv(v) :
-          (typeof v == 'string') ? link(expand(v)) :
+          (typeof v == 'string') ? link(escape(v)) :
           Array.isArray(v) ? `[${v.map(o => sxpr(o,deep-1,k,child)).join(" ")}]` :
           sxpr(v, deep-1, k, child))
         .join(" ")
@@ -148,13 +164,5 @@ function elipsis(obj) {
   const dots = '..' + '.'.repeat(Math.floor(Math.log2(bytes||1)))
   return `(<span title="${bytes} bytes">${dots}</span>)`
 }
-
-function expand(text) {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/\*(.+?)\*/g, '<i>$1</i>')
-};
 
 app.listen(1954)
