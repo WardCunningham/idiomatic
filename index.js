@@ -22,14 +22,15 @@ async function load(file) {
 
 // P A G E S
 
-const style = title => `
+const style = (title,here='') => `
   <style>
     body {font-family:sans-serif;}
     a {text-decoration:none;}
     td:first-child {text-align:right;}
     .hi {background-color:pink;}
+    section {letter-spacing:.2rem; font-size:1.2rem;}
    </style>
-   <span style="letter-spacing:.2rem; font-size:1.4rem;">— ${title} —</span>`
+   <section>— ${title} <span style="background-color:#ddd;">&nbsp;${escape(here)}&nbsp;</span> —</section>`
 const app = express()
 
 app.get('/index', async (req,res,next) => {
@@ -59,30 +60,37 @@ app.get('/terminal', (req,res) => {
   const lits = counter()
   const doit = branch => {if(branch.type==type) lits.count(branch[field])}
   visitor.wander(mods,doit)
-  const result = style('terminal')+`
+  const result = style('terminal',type)+`
     <p>${lits.size()} uniques
     <br>${lits.total()} total
     <p><table>${lits.tally()
-      .map(([k,v]) => `<tr><td>${v}<td><a href="/usage?type=${type}&field=${field}&key=${encodeURIComponent(k)}&up=2&see=3">${escape(k)}</a>`)
+      .map(([k,v]) => `<tr><td>${v}<td><a href="/usage?type=${type}&field=${field}&key=${encodeURIComponent(k)}&width=2&depth=3">${escape(k)}</a>`)
       .join("\n")}</table>`
   res.send(result)
 })
 
 app.get('/usage', (req,res) => {
-  const {type,field,key,up,see} = req.query
+  const {type,field,key,width,depth} = req.query
   const list = []
   const files = counter()
   const doit = (branch,stack) => {
     if(branch.type==type && branch[field]==key)list.push(`
       <tr><td><a href="/nesting/?file=${files.count(stack.at(-1))}&type=${type}&start=${branch.start}&end=${branch.end}">
       ${stack.at(-1)}</a>
-      <td>${sxpr(stack[up ?? 2], see ?? 3)}`)
+      <td>${sxpr(stack[width ?? 2], depth ?? 3)}`)
   }
   visitor.wander(mods,doit)
   const vis = row => row.split(/\n/)[3].trim().replaceAll(/<.*?>/g,'').replaceAll(/\.\.+/g,'..')
   list.sort((a,b) => vis(a)>vis(b) ? 1 : -1)
-  res.send(style('usage')+`
+  const q = (id,delta) => Object.entries(req.query)
+    .map(([k,v]) => k == id ? `${k}=${+v+delta}` : `${k}=${v}`)
+    .join('&')
+  const p = id => `<a href=/usage?${q(id,+1)} style="background-color:#ddd;">&nbsp;&plus;&nbsp;</a>`
+  const m = id => `<a href=/usage?${q(id,-1)} style="background-color:#ddd;">&nbsp;&minus;&nbsp;</a>`
+  const d = id => `<span title=${req.query[id]}>${id} ${p(id)} ${m(id)}</span>`
+  res.send(style('usage',key)+`
     <p><table>${files.tally().map(([k,v]) => `<tr><td>${v}<td>${k}`).join("\n")}</table>
+    <p><section>— ${d('width')} ${d('depth')} —</section>
     <p><table>${list.join("\n")}</table>`)
 })
 
