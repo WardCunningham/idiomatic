@@ -22,7 +22,14 @@ async function load(file) {
 
 // P A G E S
 
-const style = '<style> a {text-decoration: none} .hi {background-color:pink} </style>'
+const style = title => `
+  <style>
+    body {font-family:sans-serif;}
+    a {text-decoration:none;}
+    td:first-child {text-align:right;}
+    .hi {background-color:pink;}
+   </style>
+   <span style="letter-spacing:.2rem; font-size:1.4rem;">— ${title} —</span>`
 const app = express()
 
 app.get('/index', async (req,res,next) => {
@@ -33,10 +40,10 @@ app.get('/index', async (req,res,next) => {
   const result = `
     <p>${reductions.size()} non-terminals
     <br>${reductions.total()} reductions
-    <p>${reductions.tally()
-      .map(([k,v]) => `${v} ${link(k)}`)
-      .join("<br>")}`
-  res.send(style+result);
+    <p><table>${reductions.tally()
+      .map(([k,v]) => `<tr><td>${v}<td>${link(k)}`)
+      .join("\n")}</table>`
+  res.send(style('index')+result);
   next()
   })
 
@@ -47,32 +54,36 @@ function link(key) {
   return key
 }
 
-
 app.get('/terminal', (req,res) => {
   const {type,field} = req.query
   const lits = counter()
   const doit = branch => {if(branch.type==type) lits.count(branch[field])}
   visitor.wander(mods,doit)
-  const result = `
+  const result = style('terminal')+`
     <p>${lits.size()} uniques
     <br>${lits.total()} total
-    <p>${lits.tally()
-      .map(([k,v]) => `${v} <a href="/usage?type=${type}&field=${field}&key=${encodeURIComponent(k)}">${escape(k)}</a>`)
-      .join("<br>")}`
-  res.send(style+result)
+    <p><table>${lits.tally()
+      .map(([k,v]) => `<tr><td>${v}<td><a href="/usage?type=${type}&field=${field}&key=${encodeURIComponent(k)}&up=2&see=3">${escape(k)}</a>`)
+      .join("\n")}</table>`
+  res.send(result)
 })
 
 app.get('/usage', (req,res) => {
-  const {type,field,key} = req.query
+  const {type,field,key,up,see} = req.query
   const list = []
+  const files = counter()
   const doit = (branch,stack) => {
     if(branch.type==type && branch[field]==key)list.push(`
-      <a href="/nesting/?file=${stack.at(-1)}&type=${type}&start=${branch.start}&end=${branch.end}">
+      <tr><td><a href="/nesting/?file=${files.count(stack.at(-1))}&type=${type}&start=${branch.start}&end=${branch.end}">
       ${stack.at(-1)}</a>
-      ${sxpr(stack[2],3)}`)
+      <td>${sxpr(stack[up ?? 2], see ?? 3)}`)
   }
   visitor.wander(mods,doit)
-  res.send(style+`<pre>${JSON.stringify(req.query,null,2)}</pre>${list.join("<br>")}`)
+  const vis = row => row.split(/\n/)[3].trim().replaceAll(/<.*?>/g,'').replaceAll(/\.\.+/g,'..')
+  list.sort((a,b) => vis(a)>vis(b) ? 1 : -1)
+  res.send(style('usage')+`
+    <p><table>${files.tally().map(([k,v]) => `<tr><td>${v}<td>${k}`).join("\n")}</table>
+    <p><table>${list.join("\n")}</table>`)
 })
 
 app.get('/nesting', (req,res) => {
@@ -82,17 +93,17 @@ app.get('/nesting', (req,res) => {
     if(stack.at(-1)==file && branch.type==type && branch.start==start && branch.end==end) {
       const file = stack.at(-1)
       const path = stack.slice(0,-1).map((n,i) => `
-        <tr><td style="text-align:right;">
-          <a title=${file} href=/similar?pos=${`${file}-${start}-${end}`}&depth=${i}>${n.type}</a>:
+        <tr>
+        <td><a title=${file} href=/similar?pos=${`${file}-${start}-${end}`}&depth=${i}>${n.type}</a>:
         <td>${sxpr(n,3,null,stack[i-1])}`).reverse()
       const hit = stack[1]
       result.push(`
-        <table>${path.join("")}</table><br><br>\n
-        <pre>${escape(JSON.stringify(hit,omit,2))}</pre>`)
+        <p><table>${path.join("")}</table><br>
+        <p><pre>${escape(JSON.stringify(hit,omit,2))}</pre>`)
     }
   }
   visitor.wander(mods,doit)
-  res.send(style+`<pre>${JSON.stringify(req.query,null,2)}</pre>${result.join("<br>")}`)
+  res.send(style('nesting')+`${result.join("<hr>")}`)
 })
 
 
@@ -106,6 +117,7 @@ function counter() {
         counts.set(item, counts.get(item)+1)
       else 
         counts.set(item,1)
+      return item
     },
     size() {
       return counts.size
