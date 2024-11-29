@@ -37,7 +37,7 @@ app.get('/index', async (req,res,next) => {
   console.log(new Date().toLocaleTimeString(), 'index')
   const reductions = counter()
   const doit = branch => {reductions.count(branch.type)}
-  visitor.wander(mods,doit)
+  visitor.walk(mods,doit)
   const result = `
     <p>${reductions.size()} non-terminals
     <br>${reductions.total()} reductions
@@ -59,7 +59,7 @@ app.get('/terminal', (req,res) => {
   const {type,field} = req.query
   const lits = counter()
   const doit = branch => {if(branch.type==type) lits.count(branch[field])}
-  visitor.wander(mods,doit)
+  visitor.walk(mods,doit)
   const result = style('terminal',type)+`
     <p>${lits.size()} uniques
     <br>${lits.total()} total
@@ -79,7 +79,7 @@ app.get('/usage', (req,res) => {
       ${stack.at(-1)}</a>
       <td>${sxpr(stack[width ?? 2], depth ?? 3)}`)
   }
-  visitor.wander(mods,doit)
+  visitor.walk(mods,doit)
   const vis = row => row.split(/\n/)[3].trim().replaceAll(/<.*?>/g,'').replaceAll(/\.\.+/g,'..')
   list.sort((a,b) => vis(a)>vis(b) ? 1 : -1)
   const q = (id,delta) => Object.entries(req.query)
@@ -110,7 +110,7 @@ app.get('/nesting', (req,res) => {
         <p><pre>${escape(JSON.stringify(hit,omit,2))}</pre>`)
     }
   }
-  visitor.wander(mods,doit)
+  visitor.walk(mods,doit)
   res.send(style('nesting',key)+`${result.join("<hr>")}`)
 })
 
