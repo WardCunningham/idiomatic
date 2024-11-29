@@ -75,7 +75,7 @@ app.get('/usage', (req,res) => {
   const files = counter()
   const doit = (branch,stack) => {
     if(branch.type==type && branch[field]==key)list.push(`
-      <tr><td><a href="/nesting/?file=${files.count(stack.at(-1))}&type=${type}&start=${branch.start}&end=${branch.end}">
+      <tr><td><a href="/nesting/?file=${files.count(stack.at(-1))}&type=${type}&key=${key}&start=${branch.start}&end=${branch.end}">
       ${stack.at(-1)}</a>
       <td>${sxpr(stack[width ?? 2], depth ?? 3)}`)
   }
@@ -89,17 +89,17 @@ app.get('/usage', (req,res) => {
   const m = id => `<a href=/usage?${q(id,-1)} style="background-color:#ddd;">&nbsp;&minus;&nbsp;</a>`
   const d = id => `<span title=${req.query[id]}>${id} ${p(id)} ${m(id)}</span>`
   res.send(style('usage',key)+`
-    <p><table>${files.tally().map(([k,v]) => `<tr><td>${v}<td>${k}`).join("\n")}</table>
+    <p><details><summary>${files.total()} uses in ${files.size()} files</summary>
+      <table>${files.tally().map(([k,v]) => `<tr><td>${v}<td>${k}`).join("\n")}</table></details>
     <p><section>— ${d('width')} ${d('depth')} —</section>
     <p><table>${list.join("\n")}</table>`)
 })
 
 app.get('/nesting', (req,res) => {
-  const {file,type,start,end} = req.query
+  const {file,type,key,start,end} = req.query
   const result = []
   const doit = (branch,stack) => {
     if(stack.at(-1)==file && branch.type==type && branch.start==start && branch.end==end) {
-      const file = stack.at(-1)
       const path = stack.slice(0,-1).map((n,i) => `
         <tr>
         <td><a title=${file} href=/similar?pos=${`${file}-${start}-${end}`}&depth=${i}>${n.type}</a>:
@@ -111,7 +111,7 @@ app.get('/nesting', (req,res) => {
     }
   }
   visitor.wander(mods,doit)
-  res.send(style('nesting')+`${result.join("<hr>")}`)
+  res.send(style('nesting',key)+`${result.join("<hr>")}`)
 })
 
 
