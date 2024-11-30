@@ -80,7 +80,6 @@ app.get('/usage', (req,res) => {
       <td>${sxpr(stack[width ?? 2], depth ?? 3)}`)
   }
   visitor.walk(mods,doit)
-  const vis = row => row.split(/\n/)[3].trim().replaceAll(/<.*?>/g,'').replaceAll(/\.\.+/g,'..')
   list.sort((a,b) => vis(a)>vis(b) ? 1 : -1)
   const q = (id,delta) => Object.entries(req.query)
     .map(([k,v]) => k == id ? `${k}=${+v+delta}` : `${k}=${v}`)
@@ -102,7 +101,7 @@ app.get('/nesting', (req,res) => {
     if(stack.at(-1)==file && branch.type==type && branch.start==start && branch.end==end) {
       const path = stack.slice(0,-1).map((n,i) => `
         <tr>
-        <td><a title=${file} href=/similar?pos=${`${file}-${start}-${end}`}&depth=${i}>${n.type}</a>:
+        <td><a title=${file} href=/similar?${query(req.query)}&nest=${i}>${n.type}</a>:
         <td>${sxpr(n,3,null,stack[i-1])}`).reverse()
       const hit = stack[1]
       result.push(`
@@ -112,6 +111,26 @@ app.get('/nesting', (req,res) => {
   }
   visitor.walk(mods,doit)
   res.send(style('nesting',key)+`${result.join("<hr>")}`)
+})
+
+app.get('/similar', (req,res) => {
+  const {file,type,key,start,end,nest} = req.query
+  let nested
+  visitor.walk(mods,(branch,stack) => {
+    if(stack.at(-1)==file && branch.type==type && branch.start==start && branch.end==end)
+      nested = stack[nest]
+  })
+  const norm = node => vis(`\n\n\n${sxpr(node,3,null)}`)
+  const source = (file,node) => mods.find(mod => mod.file == file).text.substring(+node.start,+node.end)
+  const want = norm(nested)
+  const result = []
+  visitor.walk(mods,(branch,stack) => {
+    if(norm(branch) == want) result.push(`<pre>${escape(source(stack.at(-1),branch))}</pre><hr>`)
+  })
+  res.send(style('similar',key)+
+    `<p>${want}<hr>` +
+    result.join("\n")
+    )
 })
 
 
@@ -183,6 +202,19 @@ function elipsis(obj) {
   const bytes = (obj.end||0)-(obj.start||0)
   const dots = '..' + '.'.repeat(Math.floor(Math.log2(bytes||1)))
   return `(<span title="${bytes} bytes">${dots}</span>)`
+}
+
+function vis(row) {
+  return row.split(/\n/)[3].trim()
+    .replaceAll(/<.*?>/g,'')
+    .replaceAll(/\.\.+/g,'..')
+}
+
+
+function query(obj,adj={}) {
+  return Object.entries(obj)
+    .map(([k,v]) => k in adj ? `${k}=${adj[k](v)}` : `${k}=${v}`)
+    .join('&')
 }
 
 app.listen(1954)
