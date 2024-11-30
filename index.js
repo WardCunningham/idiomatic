@@ -1,8 +1,10 @@
 const express = require('express')
 const acorn = require('acorn')
 const fs = require('fs')
-// const fs = require('node:fs/promises');
 const visitor = require('./visitor.js')
+
+
+// P A R S E
 
 const dir = '../wiki-client/lib'
 const mods = []
@@ -30,14 +32,13 @@ const style = (title,here='') => `
     .hi {background-color:pink;}
     section {letter-spacing:.2rem; font-size:1.2rem;}
    </style>
-   <section>— ${title} <span style="background-color:#ddd;">&nbsp;${escape(here)}&nbsp;</span> —</section>`
+   <section>${title} <span style="background-color:#ddd;">&nbsp;${escape(here)}&nbsp;</span></section>`
 const app = express()
 
-app.get('/index', async (req,res,next) => {
-  console.log(new Date().toLocaleTimeString(), 'index')
+app.get('/index', async (req,res) => {
   const reductions = counter()
-  const doit = branch => {reductions.count(branch.type)}
-  visitor.walk(mods,doit)
+  visitor.walk(mods,branch =>
+    reductions.count(branch.type))
   const result = `
     <p>${reductions.size()} non-terminals
     <br>${reductions.total()} reductions
@@ -45,25 +46,25 @@ app.get('/index', async (req,res,next) => {
       .map(([k,v]) => `<tr><td>${v}<td>${link(k)}`)
       .join("\n")}</table>`
   res.send(style('index')+result);
-  next()
-  })
 
-function link(key) {
-  if(key.match(/^Ident/)) return `<a href="/terminal?type=${key}&field=name">${key}</a>`
-  if(key.match(/^(As|B|L|U).*Ex/)) return `<a href="/terminal?type=${key}&field=operator">${key}</a>`
-  if(key.match(/^Lit/)) return `<a href="/terminal?type=${key}&field=value">${key}</a>`
-  return key
-}
+  function link(key) {
+    if(key.match(/^Ident/)) return `<a href="/terminal?type=${key}&field=name">${key}</a>`
+    if(key.match(/^(As|B|L|U).*Ex/)) return `<a href="/terminal?type=${key}&field=operator">${key}</a>`
+    if(key.match(/^Lit/)) return `<a href="/terminal?type=${key}&field=value">${key}</a>`
+    return key
+  }
+})
 
 app.get('/terminal', (req,res) => {
   const {type,field} = req.query
-  const lits = counter()
-  const doit = branch => {if(branch.type==type) lits.count(branch[field])}
-  visitor.walk(mods,doit)
+  const terms = counter()
+  visitor.walk(mods,branch => {
+    if(branch.type==type)
+      terms.count(branch[field])})
   const result = style('terminal',type)+`
-    <p>${lits.size()} uniques
-    <br>${lits.total()} total
-    <p><table>${lits.tally()
+    <p>${terms.size()} uniques
+    <br>${terms.total()} total
+    <p><table>${terms.tally()
       .map(([k,v]) => `<tr><td>${v}<td><a href="/usage?type=${type}&field=${field}&key=${encodeURIComponent(k)}&width=2&depth=3">${escape(k)}</a>`)
       .join("\n")}</table>`
   res.send(result)
@@ -73,13 +74,11 @@ app.get('/usage', (req,res) => {
   const {type,field,key,width,depth} = req.query
   const list = []
   const files = counter()
-  const doit = (branch,stack) => {
+  visitor.walk(mods,(branch,stack) => {
     if(branch.type==type && branch[field]==key)list.push(`
       <tr><td><a href="/nesting/?file=${files.count(stack.at(-1))}&type=${type}&key=${key}&start=${branch.start}&end=${branch.end}">
       ${stack.at(-1)}</a>
-      <td>${sxpr(stack[width ?? 2], depth ?? 3)}`)
-  }
-  visitor.walk(mods,doit)
+      <td>${sxpr(stack[width ?? 2], depth ?? 3)}`)})
   list.sort((a,b) => vis(a)>vis(b) ? 1 : -1)
   const q = (id,delta) => Object.entries(req.query)
     .map(([k,v]) => k == id ? `${k}=${+v+delta}` : `${k}=${v}`)
@@ -90,14 +89,14 @@ app.get('/usage', (req,res) => {
   res.send(style('usage',key)+`
     <p><details><summary>${files.total()} uses in ${files.size()} files</summary>
       <table>${files.tally().map(([k,v]) => `<tr><td>${v}<td>${k}`).join("\n")}</table></details>
-    <p><section>— ${d('width')} ${d('depth')} —</section>
+    <p><section>${d('width')} ${d('depth')}</section>
     <p><table>${list.join("\n")}</table>`)
 })
 
 app.get('/nesting', (req,res) => {
   const {file,type,key,start,end} = req.query
   const result = []
-  const doit = (branch,stack) => {
+  visitor.walk(mods,(branch,stack) => {
     if(stack.at(-1)==file && branch.type==type && branch.start==start && branch.end==end) {
       const path = stack.slice(0,-1).map((n,i) => `
         <tr>
@@ -108,8 +107,7 @@ app.get('/nesting', (req,res) => {
         <p><table>${path.join("")}</table><br>
         <p><pre>${escape(JSON.stringify(hit,omit,2))}</pre>`)
     }
-  }
-  visitor.walk(mods,doit)
+  })
   res.send(style('nesting',key)+`${result.join("<hr>")}`)
 })
 
@@ -118,15 +116,14 @@ app.get('/similar', (req,res) => {
   let nested
   visitor.walk(mods,(branch,stack) => {
     if(stack.at(-1)==file && branch.type==type && branch.start==start && branch.end==end)
-      nested = stack[nest]
-  })
+      nested = stack[nest]})
   const norm = node => vis(`\n\n\n${sxpr(node,3,null)}`)
   const source = (file,node) => mods.find(mod => mod.file == file).text.substring(+node.start,+node.end)
   const want = norm(nested)
   const result = []
   visitor.walk(mods,(branch,stack) => {
-    if(norm(branch) == want) result.push(`<pre>${escape(source(stack.at(-1),branch))}</pre><hr>`)
-  })
+    if(norm(branch) == want)
+      result.push(`<pre>${escape(source(stack.at(-1),branch))}</pre><hr>`)})
   res.send(style('similar',key)+
     `<p>${want}<hr>` +
     result.join("\n")
@@ -209,7 +206,6 @@ function vis(row) {
     .replaceAll(/<.*?>/g,'')
     .replaceAll(/\.\.+/g,'..')
 }
-
 
 function query(obj,adj={}) {
   return Object.entries(obj)
