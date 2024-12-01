@@ -18,6 +18,6 @@ npm start
 
 ## History
 This program has evolved through several iterations already and has not yet fully realized the vague ambition from which it began.
-Ongoing history is sometimes recorded in the wiki page [Static Aspects](http://ward.dojo.fed.wiki/static-aspects.html) with does cite the localhost implementation.
+Ongoing history is sometimes recorded in the wiki page [Static Aspects](http://ward.dojo.fed.wiki/static-aspects.html) which does cite the localhost implementation.
 
 <img width="445" alt="image" src="https://github.com/user-attachments/assets/47ac42b3-c5e4-4853-8a04-49d38ccd63e3">
