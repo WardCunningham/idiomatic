@@ -1,0 +1,24 @@
+{
+  "name": "idiomatic",
+  "version": "1.0.0",
+  "description": "Explore coding idioms in javascrip code",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "nodemon ./index.js"
+  },
+  "keywords": [
+    "javascript",
+    "idiom",
+    "syntax"
+  ],
+  "author": "Ward Cunningham",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "acorn": "^8.14.0",
+    "express": "^4.21.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.7"
+  }
+}
